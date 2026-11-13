@@ -1,0 +1,1255 @@
+<!doctype html>
+<html lang="my">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="color-scheme" content="light" />
+    <link rel="icon" href="data:," />
+    <title>ရွာလေး — Cozy Village Life</title>
+    <style>
+      :root{
+        --ink:#2e2418;
+        --paper:#fdf6e3;
+        --paper2:#f7ead0;
+        --accent:#b5563c;
+        --accent2:#5d8a3c;
+        --gold:#e9a13b;
+        --wood:#8a6642;
+        --shadow:0 4px 14px rgba(46,36,24,.25);
+      }
+      *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+      html{ overscroll-behavior:none; }
+      html,body{ margin:0; padding:0; height:100%; height:100dvh; overflow:hidden; background:#79a851;
+        overscroll-behavior:none; touch-action:none;
+        font-family:"Padauk","Noto Sans Myanmar","Myanmar Text",system-ui,sans-serif; color:var(--ink); }
+      body{ position:fixed; inset:0; width:100%; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+      button{ font-family:inherit; min-height:2.25rem; cursor:pointer; }
+      /* Stage wraps the whole game. In software-landscape mode JS sizes it
+         to the swapped viewport and rotates it 90°, so the game itself
+         turns sideways even when the phone's auto-rotate is OFF. */
+      #stage{ position:fixed; inset:0; touch-action:none; overscroll-behavior:none; }
+      #stage.soft{ inset:auto; transform-origin:center center; }
+      #game{ position:fixed; inset:0; display:block; touch-action:none; }
+      /* Joystick touch zone: a real element covering the lower-left of
+         the stage. Movement touches START on this element, so the
+         browser delivers the whole touch stream to the page (and
+         preventDefault() here blocks pull-to-refresh) instead of the
+         drag being treated as a page gesture. Sits above the canvas,
+         below every button/dialog. */
+      #joyZone{ position:fixed; left:0; bottom:0; width:58%; height:64%; z-index:4; touch-action:none; }
+
+      /* ---------- HUD ---------- */
+      #hud{ position:fixed; top:0; left:0; right:0; padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 0;
+        display:flex; flex-direction:column; gap:6px; pointer-events:none; z-index:5; }
+      #statusbar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+      .chip{ background:rgba(253,246,227,.94); border:2px solid var(--wood); border-radius:999px;
+        padding:4px 12px; font-size:15px; font-weight:700; box-shadow:var(--shadow); display:flex; align-items:center; gap:6px; }
+      .chip .ico{ font-size:16px; }
+      #zoneLabel{ transition:opacity .4s; }
+      #invbar{ display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; pointer-events:auto; }
+      #invbar::-webkit-scrollbar{ display:none; }
+      .inv{ background:rgba(46,36,24,.78); color:#fdf6e3; border-radius:10px; padding:3px 9px; font-size:13.5px;
+        white-space:nowrap; display:flex; gap:5px; align-items:center; border:1.5px solid rgba(253,246,227,.35); }
+      .inv b{ color:var(--gold); }
+
+      /* ---------- Minimap + quests ---------- */
+      #side{ position:fixed; top:calc(env(safe-area-inset-top,0px) + 96px); right:10px; z-index:5;
+        display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
+      #minimap{ width:118px; height:88px; border:2px solid var(--wood); border-radius:10px; box-shadow:var(--shadow);
+        background:#7fae56; }
+      #questBtn{ pointer-events:auto; background:var(--paper); border:2px solid var(--wood); border-radius:999px;
+        padding:4px 14px; font-weight:700; font-size:14px; box-shadow:var(--shadow); }
+      #questPanel{ display:none; width:min(270px,78vw); background:var(--paper); border:2px solid var(--wood);
+        border-radius:14px; box-shadow:var(--shadow); padding:10px 12px; font-size:14px; }
+      #questPanel.open{ display:block; }
+      #questPanel h3{ margin:0 0 6px; font-size:15px; }
+      .q{ padding:6px 0; border-top:1px dashed #cbb98a; }
+      .q:first-of-type{ border-top:none; }
+      .q .who{ font-weight:700; }
+      .q .prog{ color:var(--accent2); font-weight:700; }
+      .q.done{ opacity:.55; text-decoration:line-through; }
+
+      /* ---------- Touch controls ---------- */
+      /* Touch controls: the joystick is driven by document-level touch
+         handlers (see the input section) — no overlay layer sits between
+         the player's thumb and the buttons. */
+      #controls{ position:fixed; inset:auto 0 0 0; z-index:6; pointer-events:none;
+        padding:0 calc(env(safe-area-inset-right,0px) + 14px) calc(env(safe-area-inset-bottom,0px) + 14px) calc(env(safe-area-inset-left,0px) + 14px);
+        display:flex; justify-content:flex-end; align-items:flex-end; }
+      #joy{ pointer-events:none; width:140px; height:140px; border-radius:50%;
+        position:fixed; left:calc(env(safe-area-inset-left,0px) + 16px); bottom:calc(env(safe-area-inset-bottom,0px) + 16px);
+        z-index:7; background:rgba(46,36,24,.30); border:2px solid rgba(253,246,227,.55); touch-action:none;
+        opacity:.75; will-change:left,top; }
+      #joy.active{ opacity:1; background:rgba(46,36,24,.42); }
+      #joyKnob{ position:absolute; left:50%; top:50%; width:60px; height:60px; border-radius:50%;
+        background:rgba(253,246,227,.94); border:2px solid var(--wood); transform:translate(-50%,-50%); box-shadow:var(--shadow);
+        will-change:transform; }
+      #actWrap{ pointer-events:auto; display:flex; flex-direction:column; align-items:center; gap:8px; }
+      #actBtn{ width:92px; height:92px; border-radius:50%; border:3px solid var(--wood);
+        background:var(--accent); color:#fff; font-size:16px; font-weight:800; box-shadow:var(--shadow);
+        display:flex; align-items:center; justify-content:center; text-align:center; line-height:1.25; padding:8px; touch-action:none; }
+      #rotateBtn{ pointer-events:auto; background:var(--paper); border:2px solid var(--wood); border-radius:999px;
+        padding:4px 14px; font-weight:700; font-size:14px; box-shadow:var(--shadow); }
+      /* Portrait hint: nudge to rotate — hidden once landscape */
+      #rotateHint{ display:none; position:fixed; top:calc(env(safe-area-inset-top,0px) + 118px); left:50%; transform:translateX(-50%);
+        z-index:5; background:rgba(46,36,24,.82); color:#fdf6e3; font-size:13.5px; font-weight:700;
+        padding:6px 14px; border-radius:999px; pointer-events:none; white-space:nowrap; }
+      @media (orientation:portrait) and (max-width:760px){
+        #rotateHint.show{ display:block; }
+      }
+      /* ---------- Landscape / short-screen layout ---------- */
+      @media (orientation:landscape){
+        #hud{ padding-left:calc(env(safe-area-inset-left,0px) + 10px); padding-right:calc(env(safe-area-inset-right,0px) + 10px); }
+        #side{ right:calc(env(safe-area-inset-right,0px) + 10px); }
+        #dialog{ bottom:calc(env(safe-area-inset-bottom,0px) + 108px); }
+      }
+      @media (orientation:landscape) and (max-height:520px){
+        .chip{ font-size:13px; padding:2px 10px; }
+        #invbar .inv{ font-size:12px; padding:2px 7px; }
+        #side{ top:calc(env(safe-area-inset-top,0px) + 62px); }
+        #minimap{ width:88px; height:66px; }
+        #questBtn,#rotateBtn{ font-size:12.5px; padding:2px 10px; min-height:1.9rem; }
+        #actBtn{ width:76px; height:76px; font-size:14px; }
+        #joy{ width:124px; height:124px; }
+        #joyKnob{ width:54px; height:54px; }
+        #toast{ top:calc(env(safe-area-inset-top,0px) + 62px); }
+        #dialog{ bottom:calc(env(safe-area-inset-bottom,0px) + 92px); padding:9px 14px 7px; }
+        #dlgText{ font-size:15px; min-height:2.6em; }
+        #startCard{ padding:16px 20px; }
+        #startCard h1{ font-size:26px; }
+        #startCard .how{ font-size:13.5px; line-height:1.55; padding:9px 13px; }
+        #playBtn{ margin-top:12px; padding:10px 34px; font-size:17px; }
+      }
+      /* Software landscape: the physical viewport is still portrait, so the
+         orientation media queries above never fire — apply the same compact
+         landscape layout via the .soft-land class JS puts on <body>. */
+      body.soft-land .chip{ font-size:13px; padding:2px 10px; }
+      body.soft-land #invbar .inv{ font-size:12px; padding:2px 7px; }
+      body.soft-land #side{ top:62px; }
+      body.soft-land #minimap{ width:88px; height:66px; }
+      body.soft-land #questBtn, body.soft-land #rotateBtn{ font-size:12.5px; padding:2px 10px; min-height:1.9rem; }
+      body.soft-land #actBtn{ width:76px; height:76px; font-size:14px; }
+      body.soft-land #joy{ width:124px; height:124px; }
+      body.soft-land #joyKnob{ width:54px; height:54px; }
+      body.soft-land #toast{ top:62px; }
+      body.soft-land #dialog{ bottom:92px; padding:9px 14px 7px; }
+      body.soft-land #dlgText{ font-size:15px; min-height:2.6em; }
+      body.soft-land #startCard{ padding:16px 20px; }
+      body.soft-land #startCard h1{ font-size:26px; }
+      body.soft-land #startCard .how{ font-size:13.5px; line-height:1.55; padding:9px 13px; }
+      body.soft-land #playBtn{ margin-top:12px; padding:10px 34px; font-size:17px; }
+      #actBtn:active{ transform:scale(.94); }
+      #actBtn.bite{ background:var(--gold); color:var(--ink); animation:pulse .35s infinite alternate; }
+      @keyframes pulse{ from{ transform:scale(1);} to{ transform:scale(1.12);} }
+      #seedBar{ display:none; gap:6px; pointer-events:auto; }
+      #seedBar.show{ display:flex; }
+      .seedBtn{ background:var(--paper); border:2px solid var(--wood); border-radius:999px; padding:5px 12px;
+        font-size:14px; font-weight:700; box-shadow:var(--shadow); }
+      .seedBtn.sel{ background:var(--accent2); color:#fff; }
+
+      /* ---------- Dialog / toast / panels ---------- */
+      #dialog{ position:fixed; left:50%; transform:translateX(-50%); bottom:calc(env(safe-area-inset-bottom,0px) + 148px);
+        width:min(560px,92vw); background:var(--paper); border:2.5px solid var(--wood); border-radius:16px;
+        box-shadow:var(--shadow); padding:12px 16px 10px; z-index:8; display:none; }
+      #dialog.show{ display:block; }
+      #dlgName{ font-weight:800; color:var(--accent); font-size:15px; margin-bottom:2px; }
+      #dlgText{ font-size:16.5px; line-height:1.55; min-height:3.1em; }
+      #dlgNext{ text-align:right; font-size:13px; color:#8a7a5c; font-weight:700; }
+      #toast{ position:fixed; top:calc(env(safe-area-inset-top,0px) + 108px); left:50%; transform:translateX(-50%) translateY(-8px);
+        background:rgba(46,36,24,.88); color:#fdf6e3; padding:8px 18px; border-radius:999px; font-size:15px; font-weight:700;
+        opacity:0; transition:all .3s; z-index:9; pointer-events:none; max-width:92vw; text-align:center; }
+      #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+      .modalWrap{ position:fixed; inset:0; background:rgba(30,22,12,.45); z-index:10; display:none;
+        align-items:center; justify-content:center; padding:16px; }
+      .modalWrap.show{ display:flex; }
+      .modal{ background:var(--paper); border:3px solid var(--wood); border-radius:18px; box-shadow:var(--shadow);
+        width:min(480px,94vw); max-height:86vh; overflow-y:auto; padding:18px; }
+      .modal h2{ margin:0 0 4px; font-size:20px; }
+      .modal .sub{ color:#7a6748; font-size:14px; margin-bottom:10px; }
+      .shopRow{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 0; border-top:1px dashed #cbb98a; }
+      .shopRow .nm{ font-weight:700; font-size:15.5px; }
+      .shopRow .own{ font-size:13px; color:#7a6748; }
+      .shopBtn{ border:2px solid var(--wood); border-radius:10px; padding:6px 13px; font-weight:800; font-size:14px; background:#fff; }
+      .shopBtn.buy{ background:var(--accent2); color:#fff; }
+      .shopBtn.sell{ background:var(--gold); color:var(--ink); }
+      .shopBtn:disabled{ opacity:.4; }
+      .closeBtn{ width:100%; margin-top:14px; background:var(--accent); color:#fff; border:2px solid var(--wood);
+        border-radius:12px; padding:10px; font-size:16px; font-weight:800; }
+
+      /* ---------- Start overlay ---------- */
+      #start{ position:fixed; inset:0; z-index:20; background:#79a851; display:flex; align-items:center; justify-content:center; padding:18px; }
+      #startCard{ background:var(--paper); border:3px solid var(--wood); border-radius:22px; box-shadow:var(--shadow);
+        width:min(520px,94vw); max-height:92vh; overflow-y:auto; padding:26px 24px; text-align:center; }
+      #startCard h1{ margin:0; font-size:34px; color:var(--accent); }
+      #startCard .tag{ font-size:16px; color:#7a6748; margin:4px 0 14px; }
+      #startCard .how{ text-align:left; background:var(--paper2); border-radius:14px; padding:12px 16px; font-size:15px; line-height:1.7; }
+      #playBtn{ margin-top:18px; background:var(--accent2); color:#fff; border:3px solid var(--wood); border-radius:14px;
+        padding:13px 42px; font-size:19px; font-weight:800; box-shadow:var(--shadow); }
+      #fade{ position:fixed; inset:0; background:#14100a; opacity:0; pointer-events:none; transition:opacity .7s; z-index:15; }
+      @media (min-width:760px){
+        #dialog{ bottom:36px; }
+        #minimap{ width:150px; height:112px; }
+      }
+    </style>
+  </head>
+  <body>
+   <div id="stage">
+    <canvas id="game"></canvas>
+    <div id="joyZone"></div>
+
+    <div id="hud">
+      <div id="statusbar">
+        <span class="chip"><span class="ico">📅</span><span id="dayTxt">နေ့ ၁</span></span>
+        <span class="chip"><span class="ico" id="clockIco">🌤️</span><span id="clockTxt">နံနက် ၆:၀၀</span></span>
+        <span class="chip"><span class="ico">🪙</span><span id="goldTxt">100</span></span>
+        <span class="chip" id="zoneLabel">📍 ရွာလယ်</span>
+      </div>
+      <div id="invbar"></div>
+    </div>
+
+    <div id="side">
+      <canvas id="minimap" width="236" height="176"></canvas>
+      <button id="questBtn">📜 Quest များ</button>
+      <button id="rotateBtn">🔄 အလျားလိုက် ဆော့မယ်</button>
+      <div id="questPanel"><h3>Quest စာရင်း</h3><div id="questList"></div></div>
+    </div>
+
+    <div id="rotateHint">📱 "🔄 အလျားလိုက် ဆော့မယ်" ခလုတ်နှိပ်ရင် ဂိမ်းကိုယ်တိုင် လှည့်ပေးတယ်</div>
+    <div id="joy"><div id="joyKnob"></div></div>
+
+    <div id="controls">
+      <div id="actWrap">
+        <div id="seedBar"></div>
+        <button id="actBtn">လုပ်ဆောင်</button>
+      </div>
+    </div>
+
+    <div id="dialog">
+      <div id="dlgName"></div>
+      <div id="dlgText"></div>
+      <div id="dlgNext">ဆက်ရန် နှိပ်ပါ ▸</div>
+    </div>
+
+    <div id="toast"></div>
+
+    <div class="modalWrap" id="shopWrap">
+      <div class="modal">
+        <h2>🏪 ဒေါ်မေမေ့ ဈေးဆိုင်</h2>
+        <div class="sub">မျိုးစေ့ ဝယ်လို့ရတယ်၊ ကိုယ့်ပစ္စည်းတွေ ပြန်ရောင်းလို့ရတယ်။ 🪙 <b id="shopGold">0</b></div>
+        <div id="shopRows"></div>
+        <button class="closeBtn" id="shopClose">ပိတ်မယ်</button>
+      </div>
+    </div>
+
+    <div id="fade"></div>
+
+    <div id="start">
+      <div id="startCard">
+        <h1>🏡 ရွာလေး</h1>
+        <p class="tag">Cozy Village Life — မြန်မာရွာလေးထဲက နေ့စဉ်ဘဝ</p>
+        <div class="how">
+          🌱 <b>လယ်ကွင်း</b>မှာ စပါး၊ ရွှေဖရုံသီး၊ ငရုတ် စိုက် — ရေလောင်း၊ ရိတ်သိမ်း<br/>
+          🎣 <b>ချောင်း</b>မှာ ငါးမျှား၊ 🌲 <b>သစ်တော</b>ထဲ သစ်ကောက်၊ မှိုကောက်<br/>
+          🏪 <b>ဈေး</b>မှာ ရောင်းပြီး ရွှေဒင်္ဂါးရှာ၊ မျိုးစေ့ ပြန်ဝယ်<br/>
+          🛕 <b>ဘုရားကုန်း</b> တက်၊ ရွာသူ/ရွာသား ၅ ယောက်ရဲ့ Quest တွေ လုပ်ပေး<br/>
+          🕹️ မျက်နှာပြင် <b>ဘယ်ဘက်ခြမ်း</b> ဘယ်နေရာထိထိ Joystick ပေါ်လာပြီး လမ်းလျှောက်လို့ရ၊ ညာဘက် <b>ခလုတ်</b> နဲ့ လုပ်ဆောင် (ကီးဘုတ် WASD + E လည်း ရတယ်)<br/>
+          🔄 <b>"အလျားလိုက် ဆော့မယ်"</b> ခလုတ်နှိပ်ရင် ဂိမ်းကိုယ်တိုင် အလျားလိုက် လှည့်ပေးတယ် — ဖုန်း Auto-rotate ပိတ်ထားလည်း ရတယ်
+        </div>
+        <button id="playBtn">▶ စဆော့မယ်</button>
+      </div>
+    </div>
+   </div><!-- /#stage -->
+
+<script>
+"use strict";
+/* ================= ရွာလေး — Cozy Village Life ================= */
+const W = 3200, H = 2400;
+const cv = document.getElementById('game'), ctx = cv.getContext('2d');
+const mm = document.getElementById('minimap'), mmx = mm.getContext('2d');
+let VW = 0, VH = 0, DPR = 1;
+/* Software landscape: when ON, the whole stage is rotated 90° by CSS and
+   the game renders into the swapped (landscape) viewport — this works
+   even when the phone's system auto-rotate is OFF, because nothing asks
+   the OS to rotate anything. Deliberately no fullscreen / orientation
+   lock APIs: those wedged this webview before. */
+let rotMode = false;
+const stageEl = document.getElementById('stage');
+function applyStage(){
+  if (rotMode){
+    const pw = window.innerWidth, ph = window.innerHeight;
+    stageEl.classList.add('soft');
+    stageEl.style.width = ph + 'px';
+    stageEl.style.height = pw + 'px';
+    stageEl.style.left = ((pw - ph) / 2) + 'px';
+    stageEl.style.top = ((ph - pw) / 2) + 'px';
+    stageEl.style.transform = 'rotate(90deg)';
+    document.body.classList.add('soft-land');
+  } else {
+    stageEl.classList.remove('soft');
+    stageEl.style.width = ''; stageEl.style.height = '';
+    stageEl.style.left = ''; stageEl.style.top = '';
+    stageEl.style.transform = '';
+    document.body.classList.remove('soft-land');
+  }
+}
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  /* if the phone itself is physically landscape now, the software
+     rotation is no longer needed — drop back to native */
+  if (rotMode && window.innerWidth > window.innerHeight){
+    rotMode = false; applyStage(); syncRotateBtn();
+  }
+  VW = rotMode ? window.innerHeight : window.innerWidth;
+  VH = rotMode ? window.innerWidth : window.innerHeight;
+  cv.width = VW * DPR; cv.height = VH * DPR;
+  cv.style.width = VW + 'px'; cv.style.height = VH + 'px';
+}
+/* physical client coords → game (logical) coords, derived from the
+   stage's own bounding rect so it stays correct whatever the webview's
+   viewport metrics are. Unrotated: plain offset. Rotated 90° clockwise:
+   the rect is the axis-aligned footprint of the turned stage, logical x
+   runs along physical +y and logical y along physical −x inside it. */
+function stagePoint(px, py){
+  const r = stageEl.getBoundingClientRect();
+  if (!rotMode) return { x:px - r.left, y:py - r.top };
+  return {
+    x:(py - r.top) * (stageEl.offsetWidth / r.height),
+    y:(r.right - px) * (stageEl.offsetHeight / r.width)
+  };
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', ()=>{ setTimeout(resize, 60); setTimeout(resize, 350); });
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+resize();
+
+/* ---------- stop pull-to-refresh / page bounce ----------
+   The game canvas never scrolls; block the browser gesture everywhere
+   except inside genuinely scrollable panels (shop, start card, quests). */
+document.addEventListener('touchmove', e=>{
+  if (e.target.closest && e.target.closest('.modal, #startCard, #questPanel, #invbar')) return;
+  e.preventDefault();
+}, { passive:false });
+document.addEventListener('gesturestart', e=> e.preventDefault());
+window.addEventListener('contextmenu', e=>{
+  if (e.target.closest && e.target.closest('#game, #joy, #actBtn, canvas')) e.preventDefault();
+});
+/* NOTE: deliberately NO forced fullscreen / orientation lock. Inside the
+   app webview those APIs can wedge the view — the screen rotates or grows
+   but touch targets stop matching what is shown, so nothing responds.
+   Landscape is done in-page instead: the 🔄 button rotates the stage
+   element itself (see rotMode above), which works with the phone's
+   auto-rotate OFF and never touches a system API. */
+
+/* ---------- helpers ---------- */
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const dist = (a,b)=>Math.hypot(a.x-b.x, a.y-b.y);
+function rng(seed){ let t = seed; return function(){ t += 0x6D2B79F5; let r = Math.imul(t ^ t>>>15, 1|t); r ^= r + Math.imul(r ^ r>>>7, 61|r); return ((r ^ r>>>14)>>>0)/4294967296; }; }
+const MYD = ['၀','၁','၂','၃','၄','၅','၆','၇','၈','၉'];
+const myNum = n => String(n).replace(/\d/g, d => MYD[+d]);
+let toastTimer = null;
+function toast(msg, ms){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), ms || 2400);
+}
+
+/* ---------- data ---------- */
+const ITEMS = {
+  seed_rice:   { name:'စပါးမျိုးစေ့', ico:'🌾', buy:10 },
+  seed_pumpkin:{ name:'ဖရုံမျိုးစေ့', ico:'🎃', buy:20 },
+  seed_chili:  { name:'ငရုတ်မျိုးစေ့', ico:'🌶️', buy:15 },
+  rice:    { name:'စပါး', ico:'🌾', sell:25 },
+  pumpkin: { name:'ရွှေဖရုံသီး', ico:'🎃', sell:55 },
+  chili:   { name:'ငရုတ်သီး', ico:'🌶️', sell:40 },
+  fish:    { name:'ငါး', ico:'🐟', sell:30 },
+  wood:    { name:'သစ်', ico:'🪵', sell:8 },
+  mushroom:{ name:'မှို', ico:'🍄', sell:35 }
+};
+const CROPS = {
+  rice:   { seed:'seed_rice', grow:55, name:'စပါး' },
+  pumpkin:{ seed:'seed_pumpkin', grow:85, name:'ရွှေဖရုံသီး' },
+  chili:  { seed:'seed_chili', grow:45, name:'ငရုတ်သီး' }
+};
+
+/* ---------- state ---------- */
+const S = {
+  started:false, day:1, minutes:360, gold:100,
+  inv:{ seed_rice:5, seed_pumpkin:2, seed_chili:3, rice:0, pumpkin:0, chili:0, fish:0, wood:0, mushroom:0 },
+  selSeed:'rice', zone:'ရွာလယ်', fishing:null, monkGiftDay:0, shopOpen:false
+};
+const player = { x:1600, y:1180, r:16, dir:1, face:'down', walk:0, moving:false };
+
+/* ---------- world layout ---------- */
+const STREAM = { x:0, y:2020, w:W, h:220 };
+const BRIDGE = { x:1500, w:180 };
+const HOUSES = [
+  { x:1000, y:800,  w:160, h:115, roof:'#b5563c', mine:true },
+  { x:1250, y:740,  w:140, h:105, roof:'#c98f4e' },
+  { x:1750, y:760,  w:150, h:110, roof:'#a34d68' },
+  { x:2060, y:840,  w:140, h:105, roof:'#5d7f9e' },
+  { x:1060, y:1180, w:145, h:108, roof:'#6d8a4f' },
+  { x:2140, y:1060, w:140, h:105, roof:'#b5563c' },
+  { x:1990, y:1300, w:150, h:110, roof:'#c98f4e' },
+  { x:1480, y:1260, w:250, h:155, roof:'#8a6642', hall:true }
+];
+const WELL = { x:1620, y:1090, r:27 };
+const BANYAN = { x:1360, y:1010, r:30 };
+const PAGODA = { x:1600, y:215, r:64 };
+const MONASTERY = { x:1830, y:300, w:190, h:120 };
+const STALLS = [
+  { x:2470, y:1560, w:150, h:80 }, { x:2700, y:1560, w:150, h:80 }, { x:2930, y:1560, w:150, h:80 }
+];
+const PIERS = [ {x:660,y:2014}, {x:1590,y:2014}, {x:2560,y:2014} ];
+
+/* farm plots */
+const plots = [];
+for (let rI=0; rI<5; rI++) for (let cI=0; cI<6; cI++)
+  plots.push({ x:2430 + cI*118, y:580 + rI*118, w:92, h:92, crop:null, progress:0, watered:false, dryT:0 });
+
+/* forest trees + mushrooms */
+const trees = [], mushrooms = [];
+(function(){
+  const R = rng(42);
+  for (let i=0; i<52; i++){
+    const x = 70 + R()*540, y = 90 + R()*1800;
+    if (y > 980 && y < 1180) continue;              // keep the west path clear
+    if (Math.hypot(x-BANYAN.x, y-BANYAN.y) < 90) continue;
+    trees.push({ x, y, r:15 + R()*7, chop:true, cd:0, shake:0, big:false });
+  }
+  trees.push({ x:BANYAN.x, y:BANYAN.y, r:34, chop:false, cd:0, shake:0, big:true });
+  const spots = [[180,300],[420,620],[240,1450],[520,1680],[120,1750],[350,950]];
+  for (const [x,y] of spots) mushrooms.push({ x, y, avail:true });
+  /* a few decorative trees in the village + south bank */
+  const extra = [[900,620],[2260,620],[820,1560],[2300,1560],[500,2320],[1200,2320],[2100,2320],[2900,2320],[900,1900],[3050,1900]];
+  for (const [x,y] of extra) trees.push({ x, y, r:16, chop:false, cd:0, shake:0, big:false });
+})();
+
+/* NPCs */
+const NPCS = [
+  { id:'ubakyi', name:'ဦးဘကြီး', role:'လယ်သမား', x:2330, y:1250, hx:2330, hy:1250, shirt:'#7a9e4f', longyi:'#5d6e8c', wander:90, tx:2330, ty:1250, wt:0 },
+  { id:'dawmay', name:'ဒေါ်မေမေ', role:'ဈေးသည်', x:2620, y:1748, hx:2620, hy:1748, shirt:'#c96f9e', longyi:'#8c4d3c', wander:30, tx:2620, ty:1748, wt:0 },
+  { id:'koaung', name:'ကိုအောင်', role:'တံငါသည်', x:2560, y:1945, hx:2560, hy:1945, shirt:'#4f86a8', longyi:'#3c5a8c', wander:50, tx:2560, ty:1945, wt:0 },
+  { id:'mamoe', name:'မမိုးစု', role:'ရွာသူ', x:1430, y:1085, hx:1430, hy:1085, shirt:'#e9a13b', longyi:'#a34d68', wander:70, tx:1430, ty:1085, wt:0 },
+  { id:'monk', name:'ဘုန်းကြီး', role:'ကျောင်းထိုင်', x:1560, y:345, hx:1560, hy:345, shirt:'#c96a1e', longyi:'#a34d1e', wander:44, tx:1560, ty:345, wt:0, monk:true }
+];
+const QUESTS = [
+  { npc:'ubakyi', item:'rice', need:5, reward:80, done:false, text:'စပါး ၅ လုံး ယူလာပေးပါ' },
+  { npc:'koaung', item:'wood', need:5, reward:60, done:false, text:'လှေပြင်ဖို့ သစ် ၅ ချောင်း လိုတယ်' },
+  { npc:'dawmay', item:'fish', need:3, reward:120, done:false, text:'ငါး ၃ ကောင် ယူလာပေးပါ — ဈေးမှာ ရောင်းဖို့' },
+  { npc:'mamoe', item:'pumpkin', need:2, reward:90, done:false, text:'ရွှေဖရုံသီး ၂ လုံး လိုချင်တယ်' },
+  { npc:'monk', item:'mushroom', need:2, reward:70, done:false, text:'မှို ၂ လုံး လှူဒါန်းပါ' }
+];
+const npcById = id => NPCS.find(n=>n.id===id);
+const questOf = id => QUESTS.find(q=>q.npc===id);
+
+/* ---------- collision ---------- */
+const SOLID_RECTS = [];
+for (const h of HOUSES) SOLID_RECTS.push({ x:h.x, y:h.y, w:h.w, h:h.h });
+SOLID_RECTS.push({ x:MONASTERY.x, y:MONASTERY.y, w:MONASTERY.w, h:MONASTERY.h });
+for (const s of STALLS) SOLID_RECTS.push({ x:s.x, y:s.y, w:s.w, h:s.h });
+SOLID_RECTS.push({ x:PAGODA.x-58, y:PAGODA.y-58, w:116, h:116 });
+const SOLID_CIRCLES = [{ x:WELL.x, y:WELL.y, r:WELL.r }];
+for (const t of trees) SOLID_CIRCLES.push({ x:t.x, y:t.y+6, r:13 });
+function blocked(x, y){
+  if (x < 24 || y < 24 || x > W-24 || y > H-24) return true;
+  for (const r of SOLID_RECTS) if (x > r.x-12 && x < r.x+r.w+12 && y > r.y-8 && y < r.y+r.h+12) return true;
+  for (const c of SOLID_CIRCLES) if (Math.hypot(x-c.x, y-c.y) < c.r + 11) return true;
+  if (y > STREAM.y + 16 && y < STREAM.y + STREAM.h - 6){
+    if (!(x > BRIDGE.x + 8 && x < BRIDGE.x + BRIDGE.w - 8)) return true;   // water, except on the bridge
+  }
+  return false;
+}
+function zoneAt(x, y){
+  if (y > STREAM.y) return 'ချောင်း';
+  if (x < 660) return 'သစ်တော';
+  if (x > 2350) return y > 1460 ? 'ဈေး' : 'လယ်ကွင်း';
+  if (x > 1130 && x < 2070 && y < 500) return 'ဘုရားကုန်း';
+  return 'ရွာလယ်';
+}
+
+/* ---------- ground prerender ---------- */
+const ground = document.createElement('canvas'); ground.width = W; ground.height = H;
+(function paintGround(){
+  const g = ground.getContext('2d'), R = rng(7);
+  g.fillStyle = '#7fae56'; g.fillRect(0,0,W,H);
+  /* grass texture */
+  for (let i=0; i<5200; i++){
+    g.fillStyle = R() > .5 ? 'rgba(255,255,220,.05)' : 'rgba(30,60,20,.06)';
+    g.fillRect(R()*W, R()*H, 3+R()*8, 2+R()*4);
+  }
+  /* forest floor */
+  g.fillStyle = '#5d8a44'; g.fillRect(0,0,660,H);
+  for (let i=0; i<1500; i++){ g.fillStyle='rgba(20,50,15,.12)'; g.fillRect(R()*660, R()*H, 4+R()*9, 3+R()*5); }
+  /* pagoda hill */
+  g.fillStyle = '#b3a06e'; g.beginPath(); g.ellipse(1600, 250, 480, 260, 0, 0, Math.PI*2); g.fill();
+  g.fillStyle = '#c2af7c'; g.beginPath(); g.ellipse(1600, 235, 380, 195, 0, 0, Math.PI*2); g.fill();
+  g.fillStyle = '#d8c48f'; g.beginPath(); g.ellipse(1600, 225, 270, 130, 0, 0, Math.PI*2); g.fill();
+  /* paddy zone soil base */
+  g.fillStyle = '#8fae5f'; g.fillRect(2350, 500, 850, 960);
+  /* market ground */
+  g.fillStyle = '#cdb287'; g.fillRect(2350, 1460, 850, 560);
+  for (let i=0; i<500; i++){ g.fillStyle='rgba(120,90,40,.10)'; g.fillRect(2350+R()*850, 1460+R()*560, 5, 3); }
+  /* dirt paths */
+  g.fillStyle = '#d9b878';
+  g.fillRect(0, 1046, W, 74);                       // west–east main path
+  g.fillRect(1546, 300, 88, STREAM.y - 300 + 240);  // hill → bridge → south
+  g.fillRect(660, 1046, 0, 0);
+  g.fillRect(2330, 560, 70, 900);                   // village → fields path edge
+  g.fillRect(2260, 1580, 200, 64);                  // village → market
+  g.strokeStyle = 'rgba(150,115,60,.35)'; g.lineWidth = 3;
+  g.strokeRect(2, 1049, W-4, 68);
+  /* flowers south bank + village */
+  const cols = ['#e97b8f','#f2d06b','#ffffff','#e98a4b'];
+  for (let i=0; i<260; i++){
+    const fx = R()*W, fy = 2260 + R()*120;
+    g.fillStyle = cols[(R()*4)|0]; g.beginPath(); g.arc(fx, fy, 3.4, 0, Math.PI*2); g.fill();
+  }
+  for (let i=0; i<90; i++){
+    const fx = 800 + R()*1600, fy = 560 + R()*1000;
+    if (fy > 1030 && fy < 1140) continue;
+    g.fillStyle = cols[(R()*4)|0]; g.beginPath(); g.arc(fx, fy, 3, 0, Math.PI*2); g.fill();
+  }
+  /* stream */
+  g.fillStyle = '#8a6f45'; g.fillRect(0, STREAM.y-12, W, 14); g.fillRect(0, STREAM.y+STREAM.h-2, W, 14);
+  const grd = g.createLinearGradient(0, STREAM.y, 0, STREAM.y+STREAM.h);
+  grd.addColorStop(0, '#5fb2cc'); grd.addColorStop(.5, '#4f9db8'); grd.addColorStop(1, '#3f88a5');
+  g.fillStyle = grd; g.fillRect(0, STREAM.y, W, STREAM.h);
+  /* bridge */
+  g.fillStyle = '#9a7448'; g.fillRect(BRIDGE.x, STREAM.y-16, BRIDGE.w, STREAM.h+32);
+  g.fillStyle = '#b08a58';
+  for (let y = STREAM.y-10; y < STREAM.y+STREAM.h+20; y += 26) g.fillRect(BRIDGE.x+6, y, BRIDGE.w-12, 16);
+  g.fillStyle = '#7a5c33'; g.fillRect(BRIDGE.x-6, STREAM.y-16, 10, STREAM.h+32); g.fillRect(BRIDGE.x+BRIDGE.w-4, STREAM.y-16, 10, STREAM.h+32);
+  /* farm plot soil */
+  for (const p of plots){
+    g.fillStyle = '#8a6a42'; roundRect(g, p.x-5, p.y-5, p.w+10, p.h+10, 10); g.fill();
+    g.fillStyle = '#75572f'; roundRect(g, p.x, p.y, p.w, p.h, 8); g.fill();
+    g.strokeStyle = 'rgba(60,40,15,.35)'; g.lineWidth = 2;
+    for (let ly = p.y+18; ly < p.y+p.h; ly += 20){ g.beginPath(); g.moveTo(p.x+8, ly); g.lineTo(p.x+p.w-8, ly); g.stroke(); }
+  }
+  /* pagoda platform */
+  g.fillStyle = '#e6d194'; g.beginPath(); g.arc(PAGODA.x, PAGODA.y, 108, 0, Math.PI*2); g.fill();
+  g.fillStyle = '#d9bd76'; g.beginPath(); g.arc(PAGODA.x, PAGODA.y, 88, 0, Math.PI*2); g.fill();
+})();
+function roundRect(c, x, y, w, h, r){
+  c.beginPath();
+  c.moveTo(x+r, y); c.arcTo(x+w, y, x+w, y+h, r); c.arcTo(x+w, y+h, x, y+h, r);
+  c.arcTo(x, y+h, x, y, r); c.arcTo(x, y, x+w, y, r); c.closePath();
+}
+
+/* ---------- HUD ---------- */
+const el = id => document.getElementById(id);
+function periodName(mins){
+  const h = Math.floor(mins/60);
+  if (h < 5) return 'ညသန်းခေါင်'; if (h < 11) return 'နံနက်'; if (h < 13) return 'နေ့လယ်';
+  if (h < 17) return 'မွန်းလွဲ'; if (h < 19) return 'ညနေ'; return 'ည';
+}
+function clockIcon(mins){
+  const h = Math.floor(mins/60);
+  if (h >= 6 && h < 16) return '🌤️'; if (h >= 16 && h < 19) return '🌇'; return '🌙';
+}
+function refreshHUD(){
+  el('dayTxt').textContent = 'နေ့ ' + myNum(S.day);
+  const h = Math.floor(S.minutes/60), m = Math.floor(S.minutes%60);
+  el('clockTxt').textContent = periodName(S.minutes) + ' ' + myNum(h) + ':' + myNum(String(m).padStart(2,'0'));
+  el('clockIco').textContent = clockIcon(S.minutes);
+  el('goldTxt').textContent = myNum(S.gold);
+  el('zoneLabel').textContent = '📍 ' + S.zone;
+  const bar = el('invbar'); bar.innerHTML = '';
+  for (const k of Object.keys(ITEMS)){
+    if (!S.inv[k]) continue;
+    const d = document.createElement('span'); d.className = 'inv';
+    d.innerHTML = ITEMS[k].ico + ' ' + ITEMS[k].name + ' <b>' + myNum(S.inv[k]) + '</b>';
+    bar.appendChild(d);
+  }
+  renderQuests();
+}
+function renderQuests(){
+  const list = el('questList'); list.innerHTML = '';
+  for (const q of QUESTS){
+    const npc = npcById(q.npc);
+    const d = document.createElement('div'); d.className = 'q' + (q.done ? ' done' : '');
+    const have = Math.min(S.inv[q.item], q.need);
+    d.innerHTML = '<span class="who">' + npc.name + '</span> (' + npc.role + ')<br>' + q.text +
+      (q.done ? '<br><span class="prog">✅ ပြီးပါပြီ — ဆု 🪙' + myNum(q.reward) + ' ရပြီး</span>'
+              : '<br><span class="prog">' + ITEMS[q.item].ico + ' ' + myNum(have) + ' / ' + myNum(q.need) + '</span>');
+    list.appendChild(d);
+  }
+}
+el('questBtn').addEventListener('click', ()=> el('questPanel').classList.toggle('open'));
+
+/* ---------- dialog ---------- */
+let dlg = null;
+function openDialog(name, lines, onEnd){
+  dlg = { name, lines, i:0, onEnd };
+  el('dlgName').textContent = name;
+  el('dlgText').textContent = lines[0];
+  el('dialog').classList.add('show');
+}
+function advanceDialog(){
+  if (!dlg) return false;
+  dlg.i++;
+  if (dlg.i >= dlg.lines.length){
+    el('dialog').classList.remove('show');
+    const cb = dlg.onEnd; dlg = null;
+    if (cb) cb();
+  } else {
+    el('dlgText').textContent = dlg.lines[dlg.i];
+  }
+  return true;
+}
+
+/* ---------- shop ---------- */
+function renderShop(){
+  el('shopGold').textContent = myNum(S.gold);
+  const rows = el('shopRows'); rows.innerHTML = '';
+  const mkRow = (key, mode) => {
+    const it = ITEMS[key], price = mode === 'buy' ? it.buy : it.sell;
+    const row = document.createElement('div'); row.className = 'shopRow';
+    const can = mode === 'buy' ? S.gold >= price : S.inv[key] > 0;
+    row.innerHTML = '<div><div class="nm">' + it.ico + ' ' + it.name + '</div>' +
+      '<div class="own">လက်ရှိ: ' + myNum(S.inv[key]) + ' • 🪙 ' + myNum(price) + '</div></div>';
+    const b = document.createElement('button');
+    b.className = 'shopBtn ' + mode; b.textContent = mode === 'buy' ? 'ဝယ်မယ်' : 'ရောင်းမယ်';
+    b.disabled = !can;
+    b.addEventListener('click', ()=>{
+      if (mode === 'buy'){ if (S.gold < price) return; S.gold -= price; S.inv[key]++; }
+      else { if (S.inv[key] <= 0) return; S.inv[key]--; S.gold += price; }
+      renderShop(); refreshHUD();
+    });
+    row.appendChild(b); rows.appendChild(row);
+  };
+  for (const k of ['seed_rice','seed_pumpkin','seed_chili']) mkRow(k, 'buy');
+  for (const k of ['rice','pumpkin','chili','fish','wood','mushroom']) if (ITEMS[k].sell) mkRow(k, 'sell');
+}
+function openShop(){ S.shopOpen = true; renderShop(); el('shopWrap').classList.add('show'); }
+function closeShop(){ S.shopOpen = false; el('shopWrap').classList.remove('show'); refreshHUD(); }
+el('shopClose').addEventListener('click', closeShop);
+
+/* ---------- NPC talk / quests ---------- */
+const GREET = {
+  ubakyi: ['ဟေ့ လူလေး၊ လယ်ကွင်းဘက် လာတာလား။ စပါးစိုက်ရင် ရေလောင်းဖို့ မမေ့နဲ့နော်။', 'ရိတ်ပြီးရင် ဈေးမှာ ဒေါ်မေမေ့ဆီ ရောင်းလို့ရတယ်။'],
+  dawmay: ['ဈေးကို ကြိုဆိုပါတယ်။ မျိုးစေ့ လိုရင် ကျွန်မဆီ ရှိတယ်။', 'ငါးအလတ်တွေ ရောက်ရင် ဈေးကောင်းပေးမယ်နော်။'],
+  koaung: ['ချောင်းရေ အေးအေးလေး၊ ငါးပေါတဲ့ နေ့ပဲ။ တံခါးဝမှာ မျှားကြည့်။', '"!" ပြလာရင် ချက်ချင်း ခလုတ် နှိပ်မှ ငါးရမှာ။'],
+  mamoe: ['ညောင်ပင်ကြီး အောက်မှာ လေအေးအေးလေး။ ရွာလေးက နေလို့ကောင်းတယ် နော်။', 'ရွှေဖရုံသီး ဟင်းချက် စားချင်လိုက်တာ…'],
+  monk: ['သာဓု သာဓု။ စိတ်အေးချမ်းစွာ နေပါ ကလေး။', 'ဘုရားကုန်းကနေ ရွာတစ်ရွာလုံး မြင်ရတယ်။']
+};
+function talkTo(npc){
+  const q = questOf(npc.id);
+  const lines = GREET[npc.id].slice();
+  let onEnd = null;
+  if (npc.monk && S.monkGiftDay !== S.day){
+    lines.push('ဒီနေ့အတွက် ငရုတ်မျိုးစေ့ ၂ စေ့ လှူလိုက်မယ်။ ကောင်းကောင်း စိုက်ပါ။');
+    onEnd = ()=>{ S.monkGiftDay = S.day; S.inv.seed_chili += 2; toast('🌶️ ငရုတ်မျိုးစေ့ ×၂ ရပြီ'); refreshHUD(); };
+  }
+  if (q && !q.done){
+    if (S.inv[q.item] >= q.need){
+      lines.push('အိုး… ' + ITEMS[q.item].name + ' ' + myNum(q.need) + ' လုံး ပါလာပြီပဲ။ ကျေးဇူးတင်လိုက်တာ။ ဆု 🪙' + myNum(q.reward) + ' ယူသွားပါ။');
+      const prev = onEnd;
+      onEnd = ()=>{ if (prev) prev(); S.inv[q.item] -= q.need; S.gold += q.reward; q.done = true;
+        toast('✅ Quest ပြီးပြီ! ဆု 🪙' + myNum(q.reward) + ' ရပြီ'); refreshHUD(); };
+    } else {
+      lines.push('🙏 တောင်းဆိုချက်: ' + q.text + ' (လက်ရှိ ' + ITEMS[q.item].ico + ' ' + myNum(S.inv[q.item]) + '/' + myNum(q.need) + ')');
+    }
+  } else if (q && q.done){
+    lines.push('ကူညီပေးတာ ကျေးဇူးအများကြီး တင်ပါတယ်။ 🙏');
+  }
+  openDialog(npc.name + ' — ' + npc.role, lines, onEnd);
+}
+
+/* ---------- interactions ---------- */
+function currentInteract(){
+  if (S.fishing) return { label:'🎣 မျှားနေ…', type:'fish' };
+  for (const n of NPCS) if (Math.hypot(player.x-n.x, player.y-n.y) < 74)
+    return { label:'💬 စကားပြော', type:'npc', npc:n };
+  for (const s of STALLS){
+    const cx = s.x + s.w/2, cy = s.y + s.h + 26;
+    if (Math.hypot(player.x-cx, player.y-cy) < 78) return { label:'🏪 ဆိုင်ဖွင့်', type:'shop' };
+  }
+  for (const p of plots){
+    if (player.x > p.x-34 && player.x < p.x+p.w+34 && player.y > p.y-34 && player.y < p.y+p.h+40){
+      if (!p.crop) return { label:'🌱 စိုက်မယ်', type:'plant', plot:p };
+      if (p.progress >= 1) return { label:'🧺 ရိတ်မယ်', type:'harvest', plot:p };
+      if (!p.watered) return { label:'💧 ရေလောင်း', type:'water', plot:p };
+      return { label:'🌿 ကြီးနေ…', type:'none' };
+    }
+  }
+  for (const pr of PIERS) if (Math.hypot(player.x-pr.x, player.y-pr.y) < 84)
+    return { label:'🎣 ငါးမျှား', type:'cast', pier:pr };
+  for (const m of mushrooms) if (m.avail && Math.hypot(player.x-m.x, player.y-m.y) < 58)
+    return { label:'🍄 မှိုကောက်', type:'mushroom', m };
+  for (const t of trees) if (t.chop && t.cd <= 0 && Math.hypot(player.x-t.x, player.y-t.y) < 66)
+    return { label:'🪓 သစ်ခုတ်', type:'chop', tree:t };
+  const home = HOUSES[0];
+  if (Math.hypot(player.x-(home.x+home.w/2), player.y-(home.y+home.h+18)) < 62)
+    return { label:'😴 အိပ်မယ်', type:'sleep' };
+  return { label:'လုပ်ဆောင်', type:'none' };
+}
+let seedSig = '';
+function refreshSeedBar(show){
+  const bar = el('seedBar');
+  if (!show){ bar.classList.remove('show'); seedSig = ''; return; }
+  const sig = S.selSeed + '|' + S.inv.seed_rice + '|' + S.inv.seed_pumpkin + '|' + S.inv.seed_chili;
+  bar.classList.add('show');
+  if (sig === seedSig) return;
+  seedSig = sig;
+  bar.innerHTML = '';
+  for (const k of Object.keys(CROPS)){
+    const b = document.createElement('button');
+    b.className = 'seedBtn' + (S.selSeed === k ? ' sel' : '');
+    b.textContent = ITEMS[CROPS[k].seed].ico + ' ' + CROPS[k].name + ' ×' + myNum(S.inv[CROPS[k].seed]);
+    b.addEventListener('click', ()=>{ S.selSeed = k; refreshSeedBar(true); });
+    bar.appendChild(b);
+  }
+}
+function doAction(){
+  if (!S.started) return;
+  if (advanceDialog()) return;
+  if (S.shopOpen) return;
+  if (S.fishing){ fishingTap(); return; }
+  const it = currentInteract();
+  if (it.type === 'npc') talkTo(it.npc);
+  else if (it.type === 'shop') openShop();
+  else if (it.type === 'plant'){
+    const c = CROPS[S.selSeed];
+    if (S.inv[c.seed] <= 0){ toast('❌ ' + c.name + ' မျိုးစေ့ မရှိတော့ဘူး — ဈေးမှာ ဝယ်ပါ'); return; }
+    S.inv[c.seed]--; it.plot.crop = S.selSeed; it.plot.progress = 0; it.plot.watered = false; it.plot.dryT = 0;
+    toast('🌱 ' + c.name + ' စိုက်ပြီ — ရေလောင်းပါ'); refreshHUD();
+  }
+  else if (it.type === 'water'){ it.plot.watered = true; it.plot.dryT = 50; toast('💧 ရေလောင်းပြီ'); }
+  else if (it.type === 'harvest'){
+    S.inv[it.plot.crop]++; toast('🧺 ' + CROPS[it.plot.crop].name + ' +၁ ရပြီ');
+    it.plot.crop = null; it.plot.progress = 0; it.plot.watered = false; refreshHUD();
+  }
+  else if (it.type === 'cast') startFishing(it.pier);
+  else if (it.type === 'mushroom'){ it.m.avail = false; S.inv.mushroom++; toast('🍄 မှို +၁ ရပြီ'); refreshHUD(); }
+  else if (it.type === 'chop'){
+    it.tree.cd = 20; it.tree.shake = .45; S.inv.wood++;
+    toast('🪵 သစ် +၁ ရပြီ'); refreshHUD();
+  }
+  else if (it.type === 'sleep') sleepNow();
+}
+
+/* ---------- fishing ---------- */
+function startFishing(pier){
+  S.fishing = { phase:'wait', t:0, biteAt:1.6 + Math.random()*2.8, pier, bx:pier.x, by:STREAM.y + 60 + Math.random()*40 };
+  el('actBtn').textContent = '🎣 စောင့်…';
+}
+function fishingTap(){
+  const f = S.fishing; if (!f) return;
+  if (f.phase === 'bite'){
+    S.fishing = null; S.inv.fish++;
+    toast('🐟 ငါး တစ်ကောင် ရပြီ!'); refreshHUD();
+  } else {
+    S.fishing = null; toast('စောလွန်းတယ် — ငါး လွတ်သွားပြီ 🐟💨');
+  }
+}
+function updateFishing(dt){
+  const f = S.fishing; if (!f) return;
+  f.t += dt;
+  const btn = el('actBtn');
+  if (f.phase === 'wait' && f.t >= f.biteAt){
+    f.phase = 'bite'; f.biteEnd = f.t + 0.85;
+    btn.classList.add('bite'); btn.textContent = '❗ အခု နှိပ်';
+  } else if (f.phase === 'bite' && f.t > f.biteEnd){
+    S.fishing = null; btn.classList.remove('bite');
+    toast('ငါး လွတ်သွားပြီ… နောက်တစ်ခါ မြန်မြန်နှိပ် 🐟💨');
+  }
+}
+
+/* ---------- day cycle ---------- */
+let fading = false;
+function nextDay(){
+  if (fading) return; fading = true;
+  el('fade').style.opacity = '1';
+  setTimeout(()=>{
+    S.day++; S.minutes = 360; S.fishing = null;
+    el('actBtn').classList.remove('bite');
+    for (const m of mushrooms) m.avail = true;
+    for (const t of trees) t.cd = 0;
+    for (const p of plots) if (p.crop && p.watered) p.progress = Math.min(1, p.progress + .4);
+    player.x = 1080; player.y = 960;
+    el('fade').style.opacity = '0'; fading = false;
+    toast('🌅 နေ့ ' + myNum(S.day) + ' — မင်္ဂလာ နံနက်ခင်းပါ'); refreshHUD();
+  }, 750);
+}
+function sleepNow(){
+  openDialog('🏠 ကိုယ့်အိမ်', ['တစ်နေ့တာ ပင်ပန်းသွားပြီ။ အိပ်ပြီး မနက်ဖြန် ဆက်လုပ်ကြမယ်။'], ()=> nextDay());
+}
+
+/* ---------- update ---------- */
+const keys = {};
+let joyVec = { x:0, y:0 };            /* raw target from the thumb / keys */
+const joySmooth = { x:0, y:0 };       /* eased value the player actually uses */
+function update(dt){
+  /* clock: a full day (6:00 → 24:00) lasts ~4.5 minutes */
+  if (!dlg && !S.shopOpen){
+    S.minutes += dt * 4;
+    if (S.minutes >= 1440){ nextDay(); }
+  }
+  /* movement — ease the input so starting, turning and stopping glide
+     instead of jerking; frame-rate independent exponential smoothing */
+  let tx = joyVec.x, ty = joyVec.y;
+  if (keys['arrowleft'] || keys['a']) tx -= 1;
+  if (keys['arrowright'] || keys['d']) tx += 1;
+  if (keys['arrowup'] || keys['w']) ty -= 1;
+  if (keys['arrowdown'] || keys['s']) ty += 1;
+  const tl = Math.hypot(tx, ty);
+  if (tl > 1){ tx /= tl; ty /= tl; }
+  const ease = 1 - Math.exp(-dt * 13);
+  joySmooth.x += (tx - joySmooth.x) * ease;
+  joySmooth.y += (ty - joySmooth.y) * ease;
+  if (Math.abs(joySmooth.x) < .001 && tx === 0) joySmooth.x = 0;
+  if (Math.abs(joySmooth.y) < .001 && ty === 0) joySmooth.y = 0;
+  let mx = joySmooth.x, my = joySmooth.y;
+  const len = Math.hypot(mx, my);
+  player.moving = false;
+  if (len > 0.08 && !dlg && !S.shopOpen && !S.fishing && !fading){
+    /* small dead-zone, then analog speed: gentle push = stroll, full push = full pace */
+    const mag = clamp((len - 0.08) / 0.92, 0, 1);
+    const dx = mx / len, dy = my / len;
+    const sp = 250 * mag * dt;
+    const nx = player.x + dx * sp, ny = player.y + dy * sp;
+    if (!blocked(nx, player.y)) player.x = nx;
+    if (!blocked(player.x, ny)) player.y = ny;
+    player.walk += dt * (5 + mag * 6); player.moving = true;
+    if (Math.abs(dx) > Math.abs(dy)) player.face = dx > 0 ? 'right' : 'left';
+    else player.face = dy > 0 ? 'down' : 'up';
+    if (dx !== 0) player.dir = dx > 0 ? 1 : -1;
+  }
+  /* zone label */
+  const z = zoneAt(player.x, player.y);
+  if (z !== S.zone){ S.zone = z; el('zoneLabel').textContent = '📍 ' + z; }
+  /* crops */
+  for (const p of plots){
+    if (!p.crop) continue;
+    if (p.watered){
+      p.dryT -= dt;
+      if (p.progress < 1) p.progress = Math.min(1, p.progress + dt / CROPS[p.crop].grow);
+      if (p.dryT <= 0 && p.progress < 1) p.watered = false;
+    }
+  }
+  for (const t of trees){ if (t.cd > 0) t.cd -= dt; if (t.shake > 0) t.shake -= dt; }
+  /* NPC wander */
+  for (const n of NPCS){
+    n.wt -= dt;
+    if (n.wt <= 0){
+      n.wt = 2 + Math.random()*3.5;
+      n.tx = n.hx + (Math.random()*2-1) * n.wander;
+      n.ty = n.hy + (Math.random()*2-1) * n.wander * .7;
+    }
+    const d = Math.hypot(n.tx-n.x, n.ty-n.y);
+    if (d > 6 && !dlg){
+      const vx = (n.tx-n.x)/d * 42 * dt, vy = (n.ty-n.y)/d * 42 * dt;
+      if (!blocked(n.x+vx, n.y)) n.x += vx;
+      if (!blocked(n.x, n.y+vy)) n.y += vy;
+    }
+  }
+  updateFishing(dt);
+  /* action button label + seed bar */
+  if (!S.fishing){
+    const it = currentInteract();
+    el('actBtn').textContent = it.label;
+    el('actBtn').classList.remove('bite');
+    refreshSeedBar(it.type === 'plant');
+  }
+}
+
+/* ---------- rendering ---------- */
+function drawPerson(x, y, shirt, longyi, opts){
+  opts = opts || {};
+  const bob = opts.moving ? Math.sin(opts.walk || 0) * 2.2 : 0;
+  ctx.fillStyle = 'rgba(30,40,15,.25)';
+  ctx.beginPath(); ctx.ellipse(x, y+16, 13, 4.5, 0, 0, Math.PI*2); ctx.fill();
+  /* longyi */
+  ctx.fillStyle = longyi; roundRect(ctx, x-9, y+2+bob*.3, 18, 15, 5); ctx.fill();
+  /* torso */
+  ctx.fillStyle = shirt; roundRect(ctx, x-10, y-12+bob*.3, 20, 16, 6); ctx.fill();
+  /* head */
+  ctx.fillStyle = '#e8b98a'; ctx.beginPath(); ctx.arc(x, y-21+bob*.3, 8.6, 0, Math.PI*2); ctx.fill();
+  /* hair / monk shave */
+  if (!opts.monk){
+    ctx.fillStyle = opts.hair || '#2b2119';
+    ctx.beginPath(); ctx.arc(x, y-23.5+bob*.3, 8.6, Math.PI, Math.PI*2); ctx.fill();
+  }
+  if (opts.name){
+    ctx.font = '700 13px "Padauk","Noto Sans Myanmar",sans-serif';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(253,246,227,.85)';
+    ctx.strokeText(opts.name, x, y-38);
+    ctx.fillStyle = '#2e2418'; ctx.fillText(opts.name, x, y-38);
+  }
+}
+function drawHouse(h){
+  const { x, y, w, hh } = { x:h.x, y:h.y, w:h.w, hh:h.h };
+  ctx.fillStyle = 'rgba(30,40,15,.18)'; roundRect(ctx, x+6, y+hh-6, w, 16, 8); ctx.fill();
+  ctx.fillStyle = '#e8d9b0'; ctx.fillRect(x+8, y+hh*.38, w-16, hh*.62);
+  ctx.fillStyle = '#caa06a'; ctx.fillRect(x+8, y+hh*.38, w-16, 5);
+  /* windows */
+  ctx.fillStyle = '#5d7f9e';
+  ctx.fillRect(x+w*.16, y+hh*.52, 20, 20); ctx.fillRect(x+w*.68, y+hh*.52, 20, 20);
+  /* door */
+  ctx.fillStyle = '#6d4c2f'; ctx.fillRect(x+w/2-13, y+hh-34, 26, 34);
+  /* thatch / tile roof */
+  ctx.fillStyle = h.roof;
+  ctx.beginPath();
+  ctx.moveTo(x-10, y+hh*.42); ctx.lineTo(x+w/2, y-16); ctx.lineTo(x+w+10, y+hh*.42); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.13)';
+  ctx.beginPath();
+  ctx.moveTo(x+w/2, y-16); ctx.lineTo(x+w+10, y+hh*.42); ctx.lineTo(x+w/2, y+hh*.42); ctx.closePath(); ctx.fill();
+  if (h.mine){
+    ctx.font = '700 14px "Padauk","Noto Sans Myanmar",sans-serif'; ctx.textAlign = 'center';
+    ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(253,246,227,.9)';
+    const t = '🏠 ကိုယ့်အိမ်'; ctx.strokeText(t, x+w/2, y-24); ctx.fillStyle = '#7a3b26'; ctx.fillText(t, x+w/2, y-24);
+  }
+  if (h.hall){
+    ctx.font = '700 14px "Padauk","Noto Sans Myanmar",sans-serif'; ctx.textAlign = 'center';
+    ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(253,246,227,.9)';
+    const t = 'ရွာခန်းမ'; ctx.strokeText(t, x+w/2, y-24); ctx.fillStyle = '#5d4423'; ctx.fillText(t, x+w/2, y-24);
+  }
+}
+function drawTree(t){
+  const sh = t.shake > 0 ? Math.sin(t.shake*40) * 3 : 0;
+  ctx.fillStyle = 'rgba(30,40,15,.22)';
+  ctx.beginPath(); ctx.ellipse(t.x, t.y+14, t.big?34:20, 6, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#7a5c33'; ctx.fillRect(t.x-4.5, t.y-2, 9, 17);
+  const R = t.big ? 46 : 26 + t.r*.4;
+  const greens = t.big ? ['#4f7d38','#5d8f42','#6da34e'] : ['#55853d','#639747','#74a854'];
+  ctx.fillStyle = greens[0]; ctx.beginPath(); ctx.arc(t.x+sh, t.y-14, R, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = greens[1]; ctx.beginPath(); ctx.arc(t.x- R*.38+sh, t.y-24, R*.68, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = greens[2]; ctx.beginPath(); ctx.arc(t.x + R*.36+sh, t.y-26, R*.55, 0, Math.PI*2); ctx.fill();
+  if (t.chop && t.cd > 0){
+    ctx.fillStyle = 'rgba(253,246,227,.9)'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('⏳', t.x, t.y - R - 18);
+  }
+}
+function drawPlot(p){
+  if (!p.crop) return;
+  const cx = p.x + p.w/2, cy = p.y + p.h/2, st = p.progress;
+  if (p.watered){
+    ctx.fillStyle = 'rgba(70,50,25,.35)'; roundRect(ctx, p.x+3, p.y+3, p.w-6, p.h-6, 7); ctx.fill();
+  }
+  if (p.crop === 'rice'){
+    ctx.strokeStyle = st >= 1 ? '#e3b93e' : (st > .5 ? '#7fae3f' : '#5d9440');
+    ctx.lineWidth = 3;
+    for (let i=0; i<9; i++){
+      const bx = p.x + 12 + (i%3)*32, by = p.y + 16 + ((i/3)|0)*30;
+      const hgt = 8 + st*20;
+      ctx.beginPath(); ctx.moveTo(bx, by+10); ctx.quadraticCurveTo(bx-3, by+10-hgt, bx-6, by+8-hgt); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bx, by+10); ctx.quadraticCurveTo(bx+3, by+10-hgt, bx+6, by+8-hgt); ctx.stroke();
+    }
+  } else if (p.crop === 'pumpkin'){
+    ctx.strokeStyle = '#4f7d38'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(cx, cy, 12 + st*16, .4, 4.6); ctx.stroke();
+    ctx.fillStyle = '#639747';
+    for (let i=0; i<5; i++){ ctx.beginPath(); ctx.ellipse(p.x+16+(i*19)%70, p.y+16+((i*29)%58), 7, 4.5, i, 0, Math.PI*2); ctx.fill(); }
+    if (st > .55){ ctx.fillStyle = '#e8862b'; ctx.beginPath(); ctx.arc(cx+14, cy+12, 7 + st*6, 0, Math.PI*2); ctx.fill(); }
+    if (st >= 1){ ctx.beginPath(); ctx.arc(cx-16, cy-8, 13, 0, Math.PI*2); ctx.fill(); }
+  } else if (p.crop === 'chili'){
+    ctx.fillStyle = '#4f7d38';
+    ctx.beginPath(); ctx.arc(cx, cy, 8 + st*11, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx-11, cy+5, 6 + st*8, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+11, cy+5, 6 + st*8, 0, Math.PI*2); ctx.fill();
+    if (st > .5){
+      ctx.fillStyle = '#d63c2a';
+      const n = st >= 1 ? 7 : 3;
+      for (let i=0; i<n; i++){ ctx.beginPath(); ctx.arc(cx-12+((i*11)%26), cy-6+((i*7)%16), 3.2, 0, Math.PI*2); ctx.fill(); }
+    }
+  }
+  if (st >= 1){
+    ctx.font = '15px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('✨', cx, p.y - 4);
+  } else if (!p.watered){
+    ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('💧', cx, p.y - 2);
+  }
+}
+function drawWorld(now){
+  const camX = clamp(player.x - VW/2, 0, Math.max(0, W - VW));
+  const camY = clamp(player.y - VH/2, 0, Math.max(0, H - VH));
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, VW, VH);
+  ctx.save(); ctx.translate(-camX, -camY);
+  ctx.drawImage(ground, 0, 0);
+  /* animated water sparkles */
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2;
+  const wy0 = Math.max(STREAM.y, camY), wy1 = Math.min(STREAM.y + STREAM.h, camY + VH);
+  for (let i=0; i<26; i++){
+    const sx = ((i*173 + now*.03*(1 + (i%3)*.4)) % (W+120)) - 60;
+    const sy = STREAM.y + 24 + (i*61) % (STREAM.h - 48);
+    if (sy < wy0 || sy > wy1) continue;
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + 22, sy); ctx.stroke();
+  }
+  /* well */
+  ctx.fillStyle = '#9a958c'; ctx.beginPath(); ctx.arc(WELL.x, WELL.y, WELL.r, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#3f88a5'; ctx.beginPath(); ctx.arc(WELL.x, WELL.y, WELL.r-8, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#7a5c33'; ctx.fillRect(WELL.x-30, WELL.y-44, 6, 34); ctx.fillRect(WELL.x+24, WELL.y-44, 6, 34);
+  ctx.fillStyle = '#b5563c'; ctx.beginPath();
+  ctx.moveTo(WELL.x-38, WELL.y-42); ctx.lineTo(WELL.x, WELL.y-62); ctx.lineTo(WELL.x+38, WELL.y-42); ctx.closePath(); ctx.fill();
+  /* piers */
+  for (const pr of PIERS){
+    ctx.fillStyle = '#9a7448'; ctx.fillRect(pr.x-34, pr.y-4, 68, 74);
+    ctx.fillStyle = '#b08a58';
+    for (let i=0; i<4; i++) ctx.fillRect(pr.x-30, pr.y + i*19, 60, 13);
+  }
+  /* stalls */
+  for (const s of STALLS){
+    ctx.fillStyle = '#e8d9b0'; ctx.fillRect(s.x, s.y+26, s.w, s.h-26);
+    ctx.fillStyle = '#8a6642'; ctx.fillRect(s.x, s.y+26, s.w, 8);
+    for (let i=0; i<6; i++){ ctx.fillStyle = i%2 ? '#fdf6e3' : '#b5563c'; ctx.fillRect(s.x + i*(s.w/6), s.y, s.w/6, 28); }
+    ctx.fillStyle = '#e9a13b';
+    for (let i=0; i<4; i++){ ctx.beginPath(); ctx.arc(s.x + 24 + i*34, s.y + 52, 7, 0, Math.PI*2); ctx.fill(); }
+  }
+  /* monastery */
+  ctx.fillStyle = '#a34d3c'; ctx.fillRect(MONASTERY.x, MONASTERY.y+34, MONASTERY.w, MONASTERY.h-34);
+  ctx.fillStyle = '#7a3b26';
+  ctx.beginPath(); ctx.moveTo(MONASTERY.x-10, MONASTERY.y+38); ctx.lineTo(MONASTERY.x+MONASTERY.w/2, MONASTERY.y-8); ctx.lineTo(MONASTERY.x+MONASTERY.w+10, MONASTERY.y+38); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#e8d9b0'; ctx.fillRect(MONASTERY.x + MONASTERY.w/2 - 14, MONASTERY.y + MONASTERY.h - 40, 28, 40);
+  /* pagoda (tiered stupa) */
+  const px = PAGODA.x, py = PAGODA.y;
+  ctx.fillStyle = '#c9a44e';
+  ctx.fillRect(px-58, py+34, 116, 16); ctx.fillRect(px-44, py+16, 88, 18); ctx.fillRect(px-30, py-2, 60, 18);
+  ctx.beginPath(); ctx.moveTo(px-20, py); ctx.quadraticCurveTo(px-16, py-52, px, py-66);
+  ctx.quadraticCurveTo(px+16, py-52, px+20, py); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#e9c96a'; ctx.beginPath(); ctx.arc(px, py-30, 13, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#b5563c'; ctx.beginPath(); ctx.moveTo(px, py-92); ctx.lineTo(px-5, py-66); ctx.lineTo(px+5, py-66); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#e9c96a'; ctx.beginPath(); ctx.arc(px, py-70, 4.5, 0, Math.PI*2); ctx.fill();
+  /* plots crops */
+  for (const p of plots) drawPlot(p);
+  /* mushrooms */
+  for (const m of mushrooms){
+    if (!m.avail) continue;
+    ctx.fillStyle = 'rgba(30,40,15,.2)'; ctx.beginPath(); ctx.ellipse(m.x, m.y+5, 10, 3.4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#f3e3c2'; ctx.fillRect(m.x-2.4, m.y-2, 5, 7);
+    ctx.fillStyle = '#d63c2a'; ctx.beginPath(); ctx.arc(m.x, m.y-2, 8.4, Math.PI, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m.x-3, m.y-6, 1.7, 0, Math.PI*2); ctx.arc(m.x+3.4, m.y-4.4, 1.4, 0, Math.PI*2); ctx.fill();
+  }
+  /* y-sorted entities */
+  const ents = [];
+  for (const h of HOUSES) ents.push({ y:h.y + h.h, f:()=>drawHouse(h) });
+  for (const t of trees) ents.push({ y:t.y + 14, f:()=>drawTree(t) });
+  for (const n of NPCS) ents.push({ y:n.y + 16, f:()=>drawPerson(n.x, n.y, n.shirt, n.longyi, { name:n.name, monk:n.monk, hair: n.id==='mamoe' ? '#3a2a1a' : '#2b2119' }) });
+  ents.push({ y:player.y + 16, f:()=>drawPerson(player.x, player.y, '#fdf6e3', '#3e6b4f', { moving:player.moving, walk:player.walk }) });
+  ents.sort((a,b)=>a.y-b.y);
+  for (const e of ents) e.f();
+  /* fishing bobber + line */
+  if (S.fishing){
+    const f = S.fishing;
+    ctx.strokeStyle = 'rgba(46,36,24,.65)'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(player.x + 10, player.y - 8); ctx.quadraticCurveTo((player.x+f.bx)/2, player.y + 26, f.bx, f.by); ctx.stroke();
+    const bob = Math.sin(now*.006) * 2.4;
+    ctx.fillStyle = '#d63c2a'; ctx.beginPath(); ctx.arc(f.bx, f.by + bob, 5.4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(f.bx, f.by + bob - 2, 5.4, Math.PI, Math.PI*1.15); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.5)';
+    ctx.beginPath(); ctx.arc(f.bx, f.by, 10 + Math.sin(now*.004)*2.4, 0, Math.PI*2); ctx.stroke();
+    if (f.phase === 'bite'){
+      ctx.font = '900 30px sans-serif'; ctx.textAlign = 'center';
+      ctx.lineWidth = 5; ctx.strokeStyle = '#fdf6e3';
+      ctx.strokeText('❗', f.bx, f.by - 20); ctx.fillStyle = '#d63c2a'; ctx.fillText('❗', f.bx, f.by - 20);
+    }
+  }
+  ctx.restore();
+  /* day / night tint */
+  const hNow = S.minutes / 60;
+  let dark = 0;
+  if (hNow >= 19) dark = Math.min(.42, (hNow - 19) * .16);
+  else if (hNow < 6.6) dark = .3;
+  if (dark > 0){
+    ctx.fillStyle = 'rgba(18,24,58,' + dark.toFixed(3) + ')';
+    ctx.fillRect(0, 0, VW, VH);
+    if (hNow >= 18){
+      const grd = ctx.createRadialGradient(player.x - clamp(player.x - VW/2, 0, Math.max(0, W - VW)), player.y - clamp(player.y - VH/2, 0, Math.max(0, H - VH)), 20, player.x - clamp(player.x - VW/2, 0, Math.max(0, W - VW)), player.y - clamp(player.y - VH/2, 0, Math.max(0, H - VH)), 190);
+      grd.addColorStop(0, 'rgba(255,190,90,.13)'); grd.addColorStop(1, 'rgba(255,190,90,0)');
+      ctx.fillStyle = grd; ctx.fillRect(0, 0, VW, VH);
+    }
+  } else if (hNow >= 16.5 && hNow < 19){
+    ctx.fillStyle = 'rgba(255,140,50,' + ((hNow - 16.5) * .05).toFixed(3) + ')';
+    ctx.fillRect(0, 0, VW, VH);
+  }
+  drawMinimap(camX, camY);
+}
+function drawMinimap(camX, camY){
+  const sx = mm.width / W, sy = mm.height / H;
+  mmx.fillStyle = '#7fae56'; mmx.fillRect(0, 0, mm.width, mm.height);
+  mmx.fillStyle = '#5d8a44'; mmx.fillRect(0, 0, 660*sx, mm.height);
+  mmx.fillStyle = '#c2af7c'; mmx.beginPath(); mmx.ellipse(1600*sx, 250*sy, 480*sx, 260*sy, 0, 0, Math.PI*2); mmx.fill();
+  mmx.fillStyle = '#8fae5f'; mmx.fillRect(2350*sx, 500*sy, 850*sx, 960*sy);
+  mmx.fillStyle = '#cdb287'; mmx.fillRect(2350*sx, 1460*sy, 850*sx, 560*sy);
+  mmx.fillStyle = '#4f9db8'; mmx.fillRect(0, STREAM.y*sy, mm.width, STREAM.h*sy);
+  mmx.fillStyle = '#e9c96a'; mmx.beginPath(); mmx.arc(PAGODA.x*sx, PAGODA.y*sy, 5, 0, Math.PI*2); mmx.fill();
+  mmx.fillStyle = '#fdf6e3';
+  for (const n of NPCS){ mmx.beginPath(); mmx.arc(n.x*sx, n.y*sy, 2.6, 0, Math.PI*2); mmx.fill(); }
+  mmx.fillStyle = '#d63c2a'; mmx.beginPath(); mmx.arc(player.x*sx, player.y*sy, 4, 0, Math.PI*2); mmx.fill();
+  mmx.strokeStyle = 'rgba(253,246,227,.8)'; mmx.lineWidth = 1.4;
+  mmx.strokeRect(camX*sx, camY*sy, VW*sx, VH*sy);
+}
+
+/* ---------- input ---------- */
+window.addEventListener('keydown', e=>{
+  const k = e.key.toLowerCase();
+  keys[k] = true;
+  if (k === 'e' || k === ' '){ e.preventDefault(); doAction(); }
+  if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
+});
+window.addEventListener('keyup', e=>{ keys[e.key.toLowerCase()] = false; });
+/* action button — touchstart (not pointer events) so it fires in every
+   webview; the timestamp guard stops one tap firing twice when a browser
+   delivers both a touch and a mouse event for it */
+let lastActTap = 0;
+function actTap(e){
+  if (e.cancelable) e.preventDefault();
+  const n = performance.now();
+  if (n - lastActTap < 250) return;
+  lastActTap = n;
+  doAction();
+}
+el('actBtn').addEventListener('touchstart', actTap, { passive:false });
+el('actBtn').addEventListener('mousedown', actTap);
+/* joystick — floating, driven by touches that START on the dedicated
+   #joyZone element (lower-left of the stage, above the canvas, below
+   all buttons). Why an element of its own: the build before this one
+   listened at document level in the capture phase, and on the phone's
+   webview the knob followed the thumb yet the character never moved —
+   the drag was being treated as a page gesture (the video even shows
+   the pull-to-refresh spinner and a full page reload mid-play). A touch
+   that starts on a real element with touch-action:none and
+   preventDefault() in its own handlers is a game input in every
+   webview: the browser hands the whole touch stream to the page.
+   Coordinates are converted with stagePoint() (stage-rect based), so
+   the same code path serves portrait and software-landscape. */
+(function(){
+  const zone = el('joyZone'), joy = el('joy'), knob = el('joyKnob');
+  let tid = null, cx = 0, cy = 0, mouseOn = false;
+  const RADIUS = 52;                       /* thumb travel before full speed */
+  function setKnob(dx, dy){ knob.style.transform = 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px))'; }
+  function placeBase(x, y){
+    const half = (joy.offsetWidth || 140) / 2;
+    const bx = clamp(x, half + 4, VW - half - 4);
+    const by = clamp(y, half + 4, VH - half - 4);
+    cx = bx; cy = by;
+    joy.style.left = (bx - half) + 'px';
+    joy.style.top = (by - half) + 'px';
+    joy.style.bottom = 'auto';
+  }
+  function homeBase(){
+    joy.style.left = ''; joy.style.top = ''; joy.style.bottom = '';
+    /* home spot is the CSS default: 16px from the left/bottom edges of
+       the stage (logical coords) */
+    const w = joy.offsetWidth || 140, h = joy.offsetHeight || 140;
+    cx = 16 + w/2; cy = VH - 16 - h/2;
+  }
+  function handle(x, y){
+    let dx = x - cx, dy = y - cy;
+    const d = Math.hypot(dx, dy);
+    const kd = Math.min(d, 46);
+    setKnob(d > 0 ? dx/d*kd : 0, d > 0 ? dy/d*kd : 0);
+    /* dead-zone inside the vector itself: tiny nudges don't move you */
+    if (d < 7){ joyVec.x = 0; joyVec.y = 0; return; }
+    const mag = Math.min(1, d / RADIUS);
+    joyVec.x = (dx / d) * mag; joyVec.y = (dy / d) * mag;
+    /* thumb drifting far: let the base follow at half rate so long
+       drags (e.g. straight down) never run out of room or hit an edge */
+    if (d > RADIUS + 26){
+      const pull = (d - RADIUS - 26) * .5;
+      placeBase(cx + dx/d*pull, cy + dy/d*pull);
+    }
+  }
+  function begin(x, y){
+    placeBase(x, y);
+    joy.classList.add('active');
+    handle(x, y);
+  }
+  function endJoy(){
+    tid = null; mouseOn = false;
+    joyVec.x = 0; joyVec.y = 0; setKnob(0, 0);
+    joy.classList.remove('active'); homeBase();
+  }
+  zone.addEventListener('touchstart', e=>{
+    if (e.cancelable) e.preventDefault();   /* claim the gesture: no scroll, no pull-to-refresh */
+    if (tid !== null) return;
+    const t = e.changedTouches[0];
+    tid = t.identifier;
+    const p = stagePoint(t.clientX, t.clientY);
+    begin(p.x, p.y);
+  }, { passive:false });
+  zone.addEventListener('touchmove', e=>{
+    if (e.cancelable) e.preventDefault();
+    if (tid === null) return;
+    for (const t of e.changedTouches)
+      if (t.identifier === tid){
+        const p = stagePoint(t.clientX, t.clientY);
+        handle(p.x, p.y);
+      }
+  }, { passive:false });
+  function zEnd(e){
+    if (tid === null) return;
+    for (const t of e.changedTouches) if (t.identifier === tid) endJoy();
+  }
+  zone.addEventListener('touchend', zEnd);
+  zone.addEventListener('touchcancel', zEnd);
+  /* if the finger slides off the zone mid-drag, window-level move/end
+     keep the drag alive instead of stranding it */
+  window.addEventListener('touchmove', e=>{
+    if (tid === null) return;
+    for (const t of e.changedTouches)
+      if (t.identifier === tid){
+        const p = stagePoint(t.clientX, t.clientY);
+        handle(p.x, p.y);
+        if (e.cancelable) e.preventDefault();
+      }
+  }, { passive:false });
+  window.addEventListener('touchend', zEnd);
+  window.addEventListener('touchcancel', zEnd);
+  /* mouse support so the game still plays on desktop */
+  zone.addEventListener('mousedown', e=>{ e.preventDefault(); mouseOn = true; const p = stagePoint(e.clientX, e.clientY); begin(p.x, p.y); });
+  window.addEventListener('mousemove', e=>{ if (mouseOn){ const p = stagePoint(e.clientX, e.clientY); handle(p.x, p.y); } });
+  window.addEventListener('mouseup', ()=>{ if (mouseOn) endJoy(); });
+  window.addEventListener('blur', endJoy);
+  homeBase();
+})();
+/* rotate button — rotates the GAME ITSELF in-page (software landscape),
+   so it works even when the phone's auto-rotate is switched OFF. Tapping
+   again returns to portrait. No fullscreen / orientation-lock calls. */
+function syncRotateBtn(){
+  el('rotateBtn').textContent = rotMode ? '🔄 ထောင်လိုက် ပြန်ဆော့မယ်' : '🔄 အလျားလိုက် ဆော့မယ်';
+}
+el('rotateBtn').addEventListener('click', ()=>{
+  if (!rotMode && window.innerWidth > window.innerHeight){
+    toast('🔄 အလျားလိုက် ဖြစ်နေပြီးသားပါ'); return;
+  }
+  rotMode = !rotMode;
+  applyStage(); syncRotateBtn(); resize();
+  toast(rotMode ? '🔄 အလျားလိုက် ပြောင်းပြီ — ဖုန်းကို လှည့်ကိုင်လိုက်ပါ' : '🔄 ထောင်လိုက် ပြန်ပြောင်းပြီ');
+});
+syncRotateBtn();
+/* portrait hint: show until the game is landscape one way or the other */
+(function(){
+  const hint = el('rotateHint');
+  function sync(){
+    const landscape = rotMode || window.innerWidth >= window.innerHeight;
+    hint.classList.toggle('show', S.started && !landscape);
+  }
+  window.addEventListener('resize', sync);
+  window.addEventListener('orientationchange', ()=> setTimeout(sync, 120));
+  setInterval(sync, 1200);
+})();
+
+/* ---------- main loop ---------- */
+let last = performance.now(), clockAcc = 0;
+function loop(now){
+  const dt = Math.min(.05, (now - last)/1000); last = now;
+  if (S.started){ update(dt); drawWorld(now); }
+  clockAcc += dt;
+  if (clockAcc > .5){ clockAcc = 0; if (S.started) refreshHUD(); }
+  requestAnimationFrame(loop);
+}
+el('playBtn').addEventListener('click', ()=>{
+  el('start').style.display = 'none';
+  S.started = true; refreshHUD();
+  toast('🏡 ရွာလေးကို ကြိုဆိုပါတယ် — ဘယ်ဘက်ခြမ်း ထိပြီး လမ်းလျှောက်ပါ', 3200);
+});
+refreshHUD();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
